@@ -6,7 +6,7 @@ from pprint import pprint
 from collections import Counter
 from confluent_kafka import Producer, Consumer, KafkaException
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(filename='logs/first_pipeline.log', filemode='w',level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 OTX_API_KEY = "b33bf61f62c7e7da86bb84481591a0844630323831ec210fd8c2e2efbfdc131a"
@@ -55,10 +55,10 @@ async def fetch_indicator_data(session, headers, indicator, kafka_bootstrap_serv
             await asyncio.sleep(5)
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP status error: {e}")
-            break  # Break the loop on HTTP status error
+            break
         except Exception as e:
             logger.exception(f"An unexpected error occurred: {e}")
-            break  # Break the loop on unexpected errors
+            break
     logger.error(f"Max retries reached. Unable to fetch data for indicator {indicator['indicator']}.")
     return []
 
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     ipv4_indicators = get_indicators(pulses, 'IPv4')
 
     try:
-        result = asyncio.run(first_pipeline(HEADERS, ipv4_indicators, KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_TARGET_COUNTRIES))
+        result = asyncio.run(first_pipeline(HEADERS, ipv4_indicators[:1000], KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_TARGET_COUNTRIES))
         pprint(result)
     except KeyboardInterrupt:
         logger.info("Script terminated by user.")

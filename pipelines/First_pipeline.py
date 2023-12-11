@@ -112,7 +112,7 @@ if __name__ == "__main__":
     ipv4_indicators = get_indicators(pulses, 'IPv4')
 
     try:
-        result = asyncio.run(first_pipeline(HEADERS, ipv4_indicators[:1000], KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_TARGET_COUNTRIES))
+        result = asyncio.run(first_pipeline(HEADERS, ipv4_indicators, KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_TARGET_COUNTRIES))
         pprint(result)
     except KeyboardInterrupt:
         logger.info("Script terminated by user.")

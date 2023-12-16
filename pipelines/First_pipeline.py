@@ -59,11 +59,9 @@ if __name__ == "__main__":
     producer = Producer(producer_config)
 
     try:
-        result = asyncio.run(first_pipeline(HEADERS, ipv4_indicators, KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_TARGET_COUNTRIES, producer))
+        result = asyncio.run(first_pipeline(HEADERS, ipv4_indicators[:1000], KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_TARGET_COUNTRIES))
         pprint(result)
     except KeyboardInterrupt:
         logger.info("Script terminated by user.")
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
-    finally:
-        producer.flush(30)

@@ -12,7 +12,6 @@ from utils import HEADERS, KAFKA_BOOTSTRAP_SERVER, KAFKA_GENERAL_TOPIC, KAFKA_TA
 
 logging.basicConfig(filename='logs/first_pipeline.log', filemode='w', level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.StreamHandler())
 
 async def first_pipeline(headers, indicators, kafka_bootstrap_servers, group_id, kafka_general_topic, kafka_second_topic, producer):
     targeted_countries = Counter()
@@ -59,9 +58,11 @@ if __name__ == "__main__":
     producer = Producer(producer_config)
 
     try:
-        result = asyncio.run(first_pipeline(HEADERS, ipv4_indicators[:1000], KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_TARGET_COUNTRIES))
+        result = asyncio.run(first_pipeline(HEADERS, ipv4_indicators, KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_TARGET_COUNTRIES, producer))
         pprint(result)
     except KeyboardInterrupt:
         logger.info("Script terminated by user.")
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
+    finally:
+        producer.flush(30)

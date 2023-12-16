@@ -12,7 +12,6 @@ from utils import HEADERS, KAFKA_BOOTSTRAP_SERVER, KAFKA_GENERAL_TOPIC, KAFKA_TH
 
 logging.basicConfig(filename='logs/second_pipeline.log', filemode='w', level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.StreamHandler())
 
 async def second_pipeline(headers, indicators, kafka_bootstrap_servers, group_id, kafka_general_topic, kafka_second_topic, producer):
     targeted_countries = Counter()

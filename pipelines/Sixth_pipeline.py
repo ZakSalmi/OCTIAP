@@ -1,3 +1,6 @@
+import sys
+if "E:\\Stream\\Project" not in sys.path:
+    sys.path.append("E:\\Stream\\Project")
 import json
 import httpx
 import logging
@@ -8,6 +11,7 @@ from confluent_kafka import Producer, Consumer
 from utils.get_indicators import get_indicators
 from utils.kafka_producer import produce_to_kafka
 from utils.fetch_indicator_data import fetch_indicator_data
+from utils.load_large_json import load_large_json
 from utils import HEADERS, KAFKA_BOOTSTRAP_SERVER, KAFKA_GENERAL_TOPIC, KAFKA_THREAT_TYPES, GROUP_ID
 
 logging.basicConfig(filename='logs/sixth_pipeline.log', filemode='w', level=logging.INFO)
@@ -52,16 +56,15 @@ async def sixth_pipeline(headers, indicators, kafka_bootstrap_servers, group_id,
         consumer.close()
 
 if __name__ == "__main__":
-    with open('data/pulses.json', 'r') as file:
+    file_path = 'data/ipv4.json'
+    with open(file_path, 'r') as file:
         pulses = json.load(file)
-
-    ipv4_indicators = get_indicators(pulses, 'IPv4')
 
     producer_config = {'bootstrap.servers': KAFKA_BOOTSTRAP_SERVER}
     producer = Producer(producer_config)
 
     try:
-        result = asyncio.run(sixth_pipeline(HEADERS, ipv4_indicators, KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_THREAT_TYPES, producer))
+        result = asyncio.run(sixth_pipeline(HEADERS, pulses, KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_THREAT_TYPES, producer))
         pprint(result)
     except KeyboardInterrupt:
         logger.info("Script terminated by user.")

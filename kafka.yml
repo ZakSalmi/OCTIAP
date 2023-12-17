@@ -1,4 +1,4 @@
-version: '3.6'
+version: "3.6"
 
 networks:
   elk:
@@ -6,14 +6,14 @@ networks:
 
 services:
   zookeeper:
-    image: 'bitnami/zookeeper:latest'
+    image: "bitnami/zookeeper:latest"
     ports:
       - "2181:2181"
     environment:
       ALLOW_ANONYMOUS_LOGIN: 1
-    
+
   kafka:
-    image: 'bitnami/kafka:2.8.1'
+    image: "bitnami/kafka:2.8.1"
     ports:
       - "9092:9092"
     environment:
@@ -30,5 +30,21 @@ services:
       ZK_HOSTS: "zookeeper:2181"
       APPLICATION_SECRET: "random-secret"
 
-      
-    
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  grafana-data:

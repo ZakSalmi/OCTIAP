@@ -12,14 +12,11 @@ async def consume_from_kafka(consumer, logger, kafka_topic=KAFKA_GENERAL_TOPIC):
             if msg is None:
                 continue
             if msg.error():
-                if msg.error().code() == KafkaException._PARTITION_EOF:
-                    continue
-                else:
-                    print(msg.error())
-                    break
+                logger.Error(f"Consumer error: {msg.error()}")
 
             value = msg.value().decode("utf-8")
-            print(f"Received processed value: {value}")
+            logger.info(f"Consumed data from Kafka topic: {kafka_topic}")
+            return value
 
     except KeyboardInterrupt:
         logger.info("Script terminated by user.")

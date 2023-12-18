@@ -5,13 +5,14 @@ from pprint import pprint
 from collections import Counter
 from confluent_kafka import Producer, Consumer
 from utils.produce_to_kafka import produce_to_kafka
+from utils.concurent_send_and_receive import concurrent_send_and_receive
 from utils.consume_from_kafka import consume_from_kafka
 from utils.fetch_indicator_data import fetch_indicator_data
 from utils.concurrent import concurrent
 from utils import (
     HEADERS,
     KAFKA_GENERAL_TOPIC,
-    KAFKA_TARGET_COUNTRIES,
+    KAFKA_THREAT_TOPIC,
     CONSUMER_CONFIG,
     PRODUCER_CONFIG,
 )
@@ -40,20 +41,16 @@ async def second_pipeline(
     kafka_second_topic,
     producer,
     general_consumer,
-    target_countries_consumer,
+    threat_countries_consumer,
 ):
     targeted_countries = Counter()
 
     try:
         sent_data = await fetch_indicator_data(session, headers, indicator, logger)
 
-        await produce_to_kafka(producer, sent_data, logger, kafka_general_topic)
-        logger.info(f"Produced data to Kafka topic: {kafka_general_topic}")
-
-        received_data = await consume_from_kafka(
-            general_consumer, logger, kafka_second_topic
+        received_data = await concurrent_send_and_receive(
+            producer, general_consumer, sent_data, logger, kafka_general_topic
         )
-        logger.info(f"Consumed data from Kafka topic: {kafka_general_topic}")
 
         if received_data["pulse_info"]["pulses"]:
             for pulse in received_data["pulse_info"]["pulses"]:
@@ -66,10 +63,10 @@ async def second_pipeline(
             kafka_second_topic,
         )
 
-        target_countries_data = await consume_from_kafka(
-            target_countries_consumer, logger, kafka_second_topic
+        threat_countries_task = asyncio.create_task(
+            consume_from_kafka(threat_countries_consumer, logger, kafka_second_topic)
         )
-        pprint(target_countries_data)
+        pprint(threat_countries_task.result())
 
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}", exc_info=True)
@@ -77,8 +74,10 @@ async def second_pipeline(
 
 if __name__ == "__main__":
     file_path = "data\ipv4.json"
+    logger.info("Starting to open the file path.")
     with open(file_path, "r") as file:
         pulses = json.load(file)
+        logger.info("File loaded succesfully.")
 
     producer = Producer(PRODUCER_CONFIG)
     general_consumer = Consumer(CONSUMER_CONFIG)
@@ -90,7 +89,7 @@ if __name__ == "__main__":
                 HEADERS,
                 pulses,
                 KAFKA_GENERAL_TOPIC,
-                KAFKA_TARGET_COUNTRIES,
+                KAFKA_THREAT_TOPIC,
                 producer,
                 general_consumer,
                 target_countries_consumer,

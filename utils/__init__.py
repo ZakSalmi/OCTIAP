@@ -16,7 +16,11 @@ KAFKA_TARGET_COUNTRIES = "target_countries"
 KAFKA_THREAT_TYPES = "threat_types"
 GROUP_ID = "target_filter_group"
 
-CONSUMER_CONFIG = {"bootstrap.servers": KAFKA_BOOTSTRAP_SERVER, "group.id": GROUP_ID}
+CONSUMER_CONFIG = {
+    "bootstrap.servers": KAFKA_BOOTSTRAP_SERVER,
+    "group.id": GROUP_ID,
+    "auto.offset.reset": "earliest",
+}
 
 PRODUCER_CONFIG = {
     "bootstrap.servers": KAFKA_BOOTSTRAP_SERVER,

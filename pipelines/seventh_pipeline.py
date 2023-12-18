@@ -1,68 +1,109 @@
 import json
-import httpx
 import logging
 import asyncio
 from pprint import pprint
 from collections import Counter
 from confluent_kafka import Producer, Consumer
-from utils.get_indicators import get_indicators
-from utils.kafka_producer import produce_to_kafka
+from utils.produce_to_kafka import produce_to_kafka
+from utils.consume_from_kafka import consume_from_kafka
 from utils.fetch_indicator_data import fetch_indicator_data
-from utils import HEADERS, KAFKA_BOOTSTRAP_SERVER, KAFKA_GENERAL_TOPIC, KAFKA_TARGET_COUNTRIES, GROUP_ID
+from utils.concurrent import concurrent
+from utils import (
+    HEADERS,
+    KAFKA_GENERAL_TOPIC,
+    KAFKA_TARGET_COUNTRIES,
+    CONSUMER_CONFIG,
+    PRODUCER_CONFIG,
+)
 
-logging.basicConfig(filename='logs/seventh_pipeline.log', filemode='w', level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    filename="logs/seventh_pipeline.log",
+    filemode="w",
+    level=logging.INFO,
+)
+
 logger = logging.getLogger(__name__)
 
-async def seventh_pipeline(headers, indicators, kafka_bootstrap_servers, group_id, kafka_general_topic, kafka_second_topic, producer):
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+logger.addHandler(console_handler)
+
+
+async def seventh_pipeline(
+    session,
+    headers,
+    indicator,
+    kafka_general_topic,
+    kafka_second_topic,
+    producer,
+    general_consumer,
+    malware_families_consumer,
+):
     malware_families = Counter()
 
-    async with httpx.AsyncClient(timeout=120.0, limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)) as session:
-        tasks = [fetch_indicator_data(session, headers, indicator, kafka_general_topic, producer, logger) for indicator in indicators]
-        await asyncio.gather(*tasks)
-
-    config = {
-        'bootstrap.servers': kafka_bootstrap_servers,
-        'group.id': group_id,
-        'auto.offset.reset': 'earliest'
-    }
-
-    consumer = Consumer(config)
-    consumer.subscribe([kafka_general_topic])
-
     try:
-        message = consumer.poll(1.0)
+        sent_data = await fetch_indicator_data(session, headers, indicator, logger)
 
-        if message is not None and not message.error():
-            value = message.value().decode('utf-8')
-            data = json.loads(value)
+        await produce_to_kafka(producer, sent_data, logger, kafka_general_topic)
+        logger.info(f"Produced data to Kafka topic: {kafka_general_topic}")
 
-            for pulse in data['pulse_info']['pulses']:
-                malware_families.update(pulse['malware_families'])
+        received_data = await consume_from_kafka(
+            general_consumer, logger, kafka_second_topic
+        )
+        logger.info(f"Consumed data from Kafka topic: {kafka_general_topic}")
 
-    except KeyboardInterrupt:
-        pass
-    finally:
-        consumer.close()
+        for pulse in received_data["pulse_info"]["pulses"]:
+            malware_families.update(pulse["malware_families"])
 
-    top_targeted_counties = dict(malware_families.most_common(10))
-    await produce_to_kafka(top_targeted_counties, kafka_bootstrap_servers, kafka_second_topic)
-    return top_targeted_counties
+        await produce_to_kafka(
+            producer,
+            dict(malware_families.most_common(10)),
+            logger,
+            kafka_second_topic,
+        )
+
+        report = await consume_from_kafka(
+            malware_families_consumer, logger, kafka_second_topic
+        )
+
+        pprint(report)
+
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
+
 
 if __name__ == "__main__":
-    with open('data/pulses.json', 'r') as file:
+    file_path = "data\ipv4.json"
+    with open(file_path, "r") as file:
         pulses = json.load(file)
 
-    ipv4_indicators = get_indicators(pulses, 'IPv4')
-
-    producer_config = {'bootstrap.servers': KAFKA_BOOTSTRAP_SERVER}
-    producer = Producer(producer_config)
+    producer = Producer(PRODUCER_CONFIG)
+    general_consumer = Consumer(CONSUMER_CONFIG)
+    target_countries_consumer = Consumer(CONSUMER_CONFIG)
 
     try:
-        result = asyncio.run(seventh_pipeline(HEADERS, ipv4_indicators, KAFKA_BOOTSTRAP_SERVER, GROUP_ID, KAFKA_GENERAL_TOPIC, KAFKA_TARGET_COUNTRIES, producer))
-        pprint(result)
+        asyncio.run(
+            concurrent(
+                HEADERS,
+                pulses,
+                KAFKA_GENERAL_TOPIC,
+                KAFKA_TARGET_COUNTRIES,
+                producer,
+                general_consumer,
+                target_countries_consumer,
+                logger,
+                seventh_pipeline,
+            )
+        )
+
     except KeyboardInterrupt:
         logger.info("Script terminated by user.")
     except Exception as e:
-        logger.exception(f"An unexpected error occurred: {e}")
+        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
     finally:
         producer.flush(30)
+        general_consumer.close()
+        target_countries_consumer.close()

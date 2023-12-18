@@ -32,7 +32,7 @@ console_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
 logger.addHandler(console_handler)
 
 
-async def third_pipeline(
+async def first_pipeline(
     session,
     headers,
     indicator,
@@ -40,9 +40,10 @@ async def third_pipeline(
     kafka_second_topic,
     producer,
     general_consumer,
-    current_targets_consumer,
+    target_countries_consumer,
 ):
-    current_targets = Counter()
+    targeted_countries = Counter()
+
     try:
         sent_data = await fetch_indicator_data(session, headers, indicator, logger)
 
@@ -54,28 +55,21 @@ async def third_pipeline(
         )
         logger.info(f"Consumed data from Kafka topic: {kafka_general_topic}")
 
-        for pulse in received_data["pulse_info"]["pulses"]:
-            if pulse["targeted_countries"]:
-                # Update the target country count
-                current_targets[tuple(pulse["targeted_countries"])] += 1
+        if received_data["pulse_info"]["pulses"]:
+            for pulse in received_data["pulse_info"]["pulses"]:
+                targeted_countries.update(pulse["targeted_countries"])
 
-                # Check for changes in the top target country/region
-                top_target = current_targets.most_common(1)[0][0]
-
-                # Report changes to the second topic
-                report = {"timestamp": pulse["modified"], "top_target": top_target}
-                await produce_to_kafka(
-                    producer,
-                    report,
-                    logger,
-                    kafka_second_topic,
-                )
-
-        report = await consume_from_kafka(
-            current_targets_consumer, logger, kafka_second_topic
+        await produce_to_kafka(
+            producer,
+            dict(targeted_countries.most_common(10)),
+            logger,
+            kafka_second_topic,
         )
 
-        pprint(report)
+        target_countries_data = await consume_from_kafka(
+            target_countries_consumer, logger, kafka_second_topic
+        )
+        pprint(target_countries_data)
 
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}", exc_info=True)
@@ -101,7 +95,7 @@ if __name__ == "__main__":
                 general_consumer,
                 target_countries_consumer,
                 logger,
-                third_pipeline,
+                first_pipeline,
             )
         )
 

@@ -2,7 +2,6 @@ import json
 import logging
 import asyncio
 from pprint import pprint
-from collections import Counter
 from confluent_kafka import Producer, Consumer
 from utils.produce_to_kafka import produce_to_kafka
 from utils.concurent_send_and_receive import concurrent_send_and_receive
@@ -13,7 +12,8 @@ from utils import (
     HEADERS,
     KAFKA_GENERAL_TOPIC,
     KAFKA_TARGET_COUNTRIES,
-    CONSUMER_CONFIG,
+    GENERAL_CONSUMER_CONFIG,
+    SPECEFIC_CONSUMER_CONFIG,
     PRODUCER_CONFIG,
 )
 
@@ -42,37 +42,34 @@ async def third_pipeline(
     producer,
     general_consumer,
     current_targets_consumer,
+    current_targets,
 ):
-    current_targets = Counter()
     try:
+        report = {}
+
         sent_data = await fetch_indicator_data(session, headers, indicator, logger)
 
         received_data = await concurrent_send_and_receive(
             producer, general_consumer, sent_data, logger, kafka_general_topic
         )
 
+        if isinstance(received_data, (str, bytes, bytearray)):
+            received_data = json.loads(received_data)
+
         for pulse in received_data["pulse_info"]["pulses"]:
-            if pulse["targeted_countries"]:
-                # Update the target country count
-                current_targets[tuple(pulse["targeted_countries"])] += 1
+            current_targets.update(pulse["targeted_countries"])
 
-                # Check for changes in the top target country/region
-                top_target = current_targets.most_common(1)[0][0]
+            top_target = current_targets.most_common(1)
 
-                # Report changes to the second topic
-                report = {"timestamp": pulse["modified"], "top_target": top_target}
-                await produce_to_kafka(
-                    producer,
-                    report,
-                    logger,
-                    kafka_second_topic,
-                )
+            report = {"timestamp": pulse["modified"], "top_target": top_target}
 
-        report_task = asyncio.create_task(
-            consume_from_kafka(current_targets_consumer, logger, kafka_second_topic)
+        await concurrent_send_and_receive(
+            producer,
+            current_targets_consumer,
+            report,
+            logger,
+            kafka_second_topic,
         )
-
-        pprint(report_task.result())
 
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}", exc_info=True)
@@ -86,8 +83,8 @@ if __name__ == "__main__":
         logger.info("File loaded succesfully.")
 
     producer = Producer(PRODUCER_CONFIG)
-    general_consumer = Consumer(CONSUMER_CONFIG)
-    target_countries_consumer = Consumer(CONSUMER_CONFIG)
+    general_consumer = Consumer(GENERAL_CONSUMER_CONFIG)
+    target_countries_consumer = Consumer(SPECEFIC_CONSUMER_CONFIG)
 
     try:
         asyncio.run(

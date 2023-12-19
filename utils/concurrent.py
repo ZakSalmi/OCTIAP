@@ -1,5 +1,6 @@
 import httpx
 import asyncio
+from collections import Counter
 
 
 async def concurrent(
@@ -14,6 +15,7 @@ async def concurrent(
     pipeline,
 ):
     tasks = []
+    counter = Counter()
     try:
         async with httpx.AsyncClient(
             timeout=120.0,
@@ -30,6 +32,7 @@ async def concurrent(
                     producer,
                     general_consumer,
                     target_countries_consumer,
+                    counter,
                 )
                 tasks.append(task)
             await asyncio.gather(*tasks)

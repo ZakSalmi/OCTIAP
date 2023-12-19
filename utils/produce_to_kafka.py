@@ -13,4 +13,4 @@ async def produce_to_kafka(producer, message, logger, kafka_topic=KAFKA_GENERAL_
     except Exception as e:
         logger.info(f"An error occurred: {e}")
     finally:
-        producer.flush()
+        producer.flush(10)

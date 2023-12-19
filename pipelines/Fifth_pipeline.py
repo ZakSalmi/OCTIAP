@@ -2,7 +2,6 @@ import json
 import logging
 import asyncio
 from pprint import pprint
-from collections import Counter
 from confluent_kafka import Producer, Consumer
 from utils.produce_to_kafka import produce_to_kafka
 from utils.concurent_send_and_receive import concurrent_send_and_receive
@@ -13,7 +12,8 @@ from utils import (
     HEADERS,
     KAFKA_GENERAL_TOPIC,
     KAFKA_TARGET_COUNTRIES,
-    CONSUMER_CONFIG,
+    GENERAL_CONSUMER_CONFIG,
+    SPECEFIC_CONSUMER_CONFIG,
     PRODUCER_CONFIG,
 )
 
@@ -42,9 +42,8 @@ async def fifth_pipeline(
     producer,
     general_consumer,
     threat_types_consumer,
+    current_threat_types,
 ):
-    current_threat_types = Counter()
-
     try:
         sent_data = await fetch_indicator_data(session, headers, indicator, logger)
 
@@ -52,30 +51,27 @@ async def fifth_pipeline(
             producer, general_consumer, sent_data, logger, kafka_general_topic
         )
 
+        if isinstance(received_data, (str, bytes, bytearray)):
+            received_data = json.loads(received_data)
+
         for pulse in received_data["pulse_info"]["pulses"]:
             if pulse["tags"]:
-                current_threat_types[tuple(pulse["tags"])] += 1
+                current_threat_types.update(pulse["targeted_countries"])
 
-                top_threat_type = current_threat_types.most_common(1)[0][0]
+                top_threat_type = current_threat_types.most_common(1)
 
                 report = {
                     "timestamp": pulse["modified"],
                     "top_threat_type": top_threat_type,
                 }
-                await produce_to_kafka(
-                    producer,
-                    report,
-                    logger,
-                    kafka_second_topic,
-                )
 
-        report_task = asyncio.create_task(
-            consume_from_kafka(threat_types_consumer, logger, kafka_second_topic)
+        await concurrent_send_and_receive(
+            producer,
+            threat_types_consumer,
+            report,
+            logger,
+            kafka_second_topic,
         )
-
-        await report_task
-
-        pprint(report_task.result())
 
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}", exc_info=True)
@@ -89,14 +85,14 @@ if __name__ == "__main__":
         logger.info("File loaded succesfully.")
 
     producer = Producer(PRODUCER_CONFIG)
-    general_consumer = Consumer(CONSUMER_CONFIG)
-    target_countries_consumer = Consumer(CONSUMER_CONFIG)
+    general_consumer = Consumer(GENERAL_CONSUMER_CONFIG)
+    target_countries_consumer = Consumer(SPECEFIC_CONSUMER_CONFIG)
 
     try:
         asyncio.run(
             concurrent(
                 HEADERS,
-                pulses,
+                pulses[:10],
                 KAFKA_GENERAL_TOPIC,
                 KAFKA_TARGET_COUNTRIES,
                 producer,
